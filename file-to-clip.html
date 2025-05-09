@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File to Clip Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: #fafafa;
+            cursor: pointer;
+        }
+        .drop-zone.dragover {
+            border-color: #000;
+            background-color: #f0f0f0;
+        }
+        .output {
+            margin-top: 20px;
+            display: none;
+        }
+        .clip {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f5e9;
+            border-radius: 4px;
+        }
+        .warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+            display: none;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.3s ease;
+        }
+        .file-info {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>File to Clip Converter</h1>
+        
+        <div class="instructions">
+            <h3>How to use:</h3>
+            <ol>
+                <li>Click the button below or drag & drop a file into the box</li>
+                <li>Wait for the clip to be generated</li>
+                <li>Click "Copy Clip" to copy the generated clip</li>
+                <li>Paste the clip in the chat interface</li>
+            </ol>
+        </div>
+
+        <div class="warning" id="warning"></div>
+
+        <div class="drop-zone" id="dropZone">
+            <p>Drop file here or click to select</p>
+            <input type="file" id="fileInput" style="display: none">
+        </div>
+
+        <div class="progress" id="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="file-info" id="fileInfo"></div>
+
+        <div class="output" id="output">
+            <h3>Generated Clip:</h3>
+            <textarea class="clip" id="clipOutput" readonly></textarea>
+            <button onclick="copyClip()">Copy Clip</button>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const output = document.getElementById('output');
+        const clipOutput = document.getElementById('clipOutput');
+        const warning = document.getElementById('warning');
+        const progress = document.getElementById('progress');
+        const progressBar = document.getElementById('progressBar');
+        const fileInfo = document.getElementById('fileInfo');
+
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+
+        // Handle drag and drop events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('dragover');
+        }
+
+        // Handle file selection
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+        dropZone.addEventListener('drop', handleDrop);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const file = dt.files[0];
+            handleFile(file);
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            handleFile(file);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function handleFile(file) {
+            if (!file) return;
+
+            // Reset UI
+            warning.style.display = 'none';
+            progress.style.display = 'none';
+            output.style.display = 'none';
+            fileInfo.style.display = 'none';
+
+            // Show file info
+            fileInfo.style.display = 'block';
+            fileInfo.innerHTML = `
+                <strong>File:</strong> ${file.name}<br>
+                <strong>Type:</strong> ${file.type || 'binary/octet-stream'}<br>
+                <strong>Size:</strong> ${formatFileSize(file.size)}
+            `;
+
+            // Check file size
+            if (file.size > MAX_FILE_SIZE) {
+                warning.style.display = 'block';
+                warning.textContent = `Warning: File size (${formatFileSize(file.size)}) exceeds recommended limit of ${formatFileSize(MAX_FILE_SIZE)}. The generated clip may be very large.`;
+            }
+
+            // Show progress for large files
+            if (file.size > 1024 * 1024) { // 1MB
+                progress.style.display = 'block';
+            }
+
+            const reader = new FileReader();
+            
+            reader.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percentLoaded = Math.round((e.loaded / e.total) * 100);
+                    progressBar.style.width = percentLoaded + '%';
+                }
+            };
+
+            reader.onload = function(e) {
+                const base64Content = e.target.result.split(',')[1];
+                const clip = generateClip(file.name, file.type || 'binary/octet-stream', base64Content, file.size);
+                clipOutput.value = clip;
+                output.style.display = 'block';
+                progress.style.display = 'none';
+            };
+
+            reader.onerror = function() {
+                warning.style.display = 'block';
+                warning.textContent = 'Error reading file. Please try again.';
+                progress.style.display = 'none';
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        function generateClip(filename, filetype, content, size) {
+            return `[FILE_CLIP]
+NAME: ${filename}
+TYPE: ${filetype}
+SIZE: ${formatFileSize(size)}
+CONTENT: ${content}
+[/FILE_CLIP]`;
+        }
+
+        function copyClip() {
+            clipOutput.select();
+            document.execCommand('copy');
+            alert('Clip copied to clipboard!');
+        }
+    </script>
+</body>
+</html>
